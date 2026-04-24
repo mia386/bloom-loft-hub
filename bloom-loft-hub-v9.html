@@ -898,12 +898,10 @@ function buildTeamBars(){
 function rebuildAll(){buildTeamBars();buildWeek();buildIgGrid();buildIgAC();buildOv();}
 
 // ── TEAM SUPABASE SYNC ──
-const TEAM_STORAGE_KEY='bloomloft_team';
 async function saveTeamToSupabase(){
   try{
-    // Store all 4 team members as a single row with id=1
     const payload={cell_index:999,data:JSON.stringify(TEAM),updated_at:new Date().toISOString()};
-    await fetch(`${SUPA_URL}/rest/v1/ig_grid`,{
+    await fetch(`${SUPA_URL}/rest/v1/ig_grid?on_conflict=cell_index`,{
       method:'POST',
       headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
       body:JSON.stringify(payload)
@@ -912,7 +910,7 @@ async function saveTeamToSupabase(){
 }
 async function loadTeamFromSupabase(){
   try{
-    const res=await fetch(`${SUPA_URL}/rest/v1/ig_grid?select=data&cell_index=eq.999`,{
+    const res=await fetch(`${SUPA_URL}/rest/v1/ig_grid?select=data&cell_index=eq.999&order=updated_at.desc&limit=1`,{
       headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY}
     });
     const rows=await res.json();
@@ -971,7 +969,7 @@ function buildChannelDashboard(){
 function deleteChannel(ci){
   if(!confirm(`Remove "${CHANNELS[ci].name}" channel block?`)) return;
   CHANNELS.splice(ci,1);
-  buildChannelDashboard();
+  buildChannelDashboard();hubSave("channels",CHANNELS);
 }
 
 function addChannel(){
@@ -987,11 +985,12 @@ function addChannel(){
     const cards=document.querySelectorAll('.channel-card');
     if(cards.length) cards[cards.length-1].scrollIntoView({behavior:'smooth',block:'center'});
   },100);
+  hubSave('channels',CHANNELS);
 }
 
 function addMetric(ci){
   CHANNELS[ci].metrics.push({l:'New metric',v:'—'});
-  buildChannelDashboard();
+  buildChannelDashboard();hubSave('channels',CHANNELS);
 }
 
 const CHANNEL_COLORS=[
@@ -1003,7 +1002,7 @@ function cycleChannelColor(ci){
   const current=CHANNEL_COLORS.findIndex(c=>c.bg===CHANNELS[ci].bg);
   const next=CHANNEL_COLORS[(current+1)%CHANNEL_COLORS.length];
   CHANNELS[ci].bg=next.bg;CHANNELS[ci].fg=next.fg;
-  buildChannelDashboard();
+  buildChannelDashboard();hubSave('channels',CHANNELS);
 }
 
 // ── CALENDAR ──
@@ -1277,14 +1276,13 @@ function addManualTask(){
   document.getElementById('new-task-urgent').checked=false;
   window._ntaSelected=[];
   document.querySelectorAll('[id^=nta-]').forEach(btn=>btn.classList.remove('sel'));
-  buildWeek();
+  buildWeek();hubSave("manual_tasks",manualTasks);
 }
 
 function toggleWTask(id,wi,day,val){
-  // Check manual tasks first
   const man=(manualTasks[wi]||{})[day]||[];
   const mt=man.find(t=>t.id===id);
-  if(mt){mt.done=val;buildWeek();return;}
+  if(mt){mt.done=val;buildWeek();hubSave('manual_tasks',manualTasks);return;}
   // Auto tasks — mark done in a done-set
   if(!window._autoDone) window._autoDone={};
   window._autoDone[id]=val;
@@ -1302,7 +1300,7 @@ function deleteWTask(id,wi,day){
   const arr=manualTasks[wi][day];
   const idx=arr.findIndex(t=>t.id===id);
   if(idx>=0) arr.splice(idx,1);
-  buildWeek();
+  buildWeek();hubSave('manual_tasks',manualTasks);
 }
 
 function refreshAutoTasks(){
@@ -1493,7 +1491,7 @@ function addEvent(){
     checks:[{t:'Create event flyer',done:false},{t:'Post on Instagram',done:false},{t:'Create Facebook event',done:false},{t:'Send email to list',done:false},{t:'Prepare day-of materials',done:false}]
   });
   document.getElementById('ev-nm').value='';document.getElementById('ev-dt').value='';document.getElementById('ev-venue').value='';
-  buildEvents();buildOv();buildWeek();
+  buildEvents();buildOv();buildWeek();hubSave("events",EVENTS);
   const ok=document.getElementById('ev-ok');ok.style.display='inline';setTimeout(()=>ok.style.display='none',2000);
 }
 
@@ -1537,13 +1535,13 @@ function cancelAppr(i){
   if(!confirm(`Remove "${APPR[i].title}" from the approval queue?`)) return;
   APPR.splice(i,1);
   ['hsp-appr','st-appr2'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=Math.max(0,parseInt(el.textContent)-1);});
-  buildApprQueue();buildOv();buildWeek();
+  buildApprQueue();buildOv();buildWeek();hubSave("approvals",APPR);
 }
-function odFilmer(i,fi){const idx=OD_IDEAS[i].filmmaker.indexOf(fi);if(idx>=0)OD_IDEAS[i].filmmaker.splice(idx,1);else OD_IDEAS[i].filmmaker.push(fi);buildOdIdeas();}
+function odFilmer(i,fi){const idx=OD_IDEAS[i].filmmaker.indexOf(fi);if(idx>=0)OD_IDEAS[i].filmmaker.splice(idx,1);else OD_IDEAS[i].filmmaker.push(fi);buildOdIdeas();hubSave("od_ideas",OD_IDEAS);}
 function cancelOdIdea(i){
   if(!confirm(`Remove "${OD_IDEAS[i].title}" from the on demand pipeline?`)) return;
   OD_IDEAS.splice(i,1);
-  buildOdIdeas();buildOdPipeline();buildOv();buildWeek();
+  buildOdIdeas();buildOdPipeline();buildOv();buildWeek();hubSave("od_ideas",OD_IDEAS);
 }
 function buildOdPipeline(){
   const items=[{t:'30-min Vinyasa flow',s:4,o:[0]},{t:'20-min Yin yoga',s:3,o:[0,3]},{t:'Ayurveda morning routine',s:1,o:[0]},{t:'Breathwork for beginners',s:0,o:[]},{t:'TIW module 1 preview',s:0,o:[0]}];
@@ -1618,7 +1616,7 @@ function buildFilmDays(){
 function deleteFilmSession(i){
   if(!confirm(`Delete filming session "${filmSessions[i].date}"?`)) return;
   filmSessions.splice(i,1);
-  buildFilmDays();
+  buildFilmDays();hubSave("film_sessions",filmSessions);
 }
 function buildFilmCrew(){const row=document.getElementById('f-crew');if(!row)return;row.innerHTML=TEAM.map((m,i)=>`<button class="ach${fCrewSel.includes(i)?' sel':''}" onclick="toggleFCrew(${i})">${shp(m.shape,m.color,11)} ${m.name}</button>`).join('');}
 function toggleFCrew(i){const idx=fCrewSel.indexOf(i);if(idx>=0)fCrewSel.splice(idx,1);else fCrewSel.push(i);buildFilmCrew();}
@@ -1626,7 +1624,7 @@ function addFilmDay(){
   const date=document.getElementById('f-date').value.trim();if(!date)return;
   filmSessions.push({date,loc:document.getElementById('f-loc').value||'TBD',content:document.getElementById('f-content').value||'TBD',crew:[...fCrewSel],equip:document.getElementById('f-equip').value||'TBD',notes:document.getElementById('f-notes').value||''});
   ['f-date','f-loc','f-content','f-equip','f-notes'].forEach(id=>document.getElementById(id).value='');
-  fCrewSel=[];buildFilmCrew();buildFilmDays();
+  fCrewSel=[];buildFilmCrew();buildFilmDays();hubSave("film_sessions",filmSessions);
   const ok=document.getElementById('f-ok');ok.style.display='inline';setTimeout(()=>ok.style.display='none',2000);
 }
 
@@ -1647,9 +1645,9 @@ function addLink(){
   const name=document.getElementById('lk-nm').value.trim();const url=document.getElementById('lk-url').value.trim();if(!name||!url)return;
   savedLinks.push({cat:document.getElementById('lk-cat').value,name,url:url.startsWith('http')?url:'https://'+url});
   document.getElementById('lk-nm').value='';document.getElementById('lk-url').value='';
-  buildLinks();const ok=document.getElementById('lk-ok');ok.style.display='inline';setTimeout(()=>ok.style.display='none',2000);
+  buildLinks();hubSave("links",savedLinks);const ok=document.getElementById('lk-ok');ok.style.display='inline';setTimeout(()=>ok.style.display='none',2000);
 }
-function delLink(i){savedLinks.splice(i,1);buildLinks();}
+function delLink(i){savedLinks.splice(i,1);buildLinks();hubSave("links",savedLinks);}
 
 // ── IG GRID ──
 const IG_STAGES=['Idea','Scripted','Filmed','Edited','Approved','Scheduled'];
@@ -1700,7 +1698,7 @@ async function igSaveToSupabase(idx){
     // Strip large images — store only if under 500KB
     if(cell.img&&cell.img.length>500000) cell.img=null;
     const payload={cell_index:idx,data:JSON.stringify(cell),updated_at:new Date().toISOString()};
-    await fetch(`${SUPA_URL}/rest/v1/${SUPA_TABLE}`,{
+    await fetch(`${SUPA_URL}/rest/v1/${SUPA_TABLE}?on_conflict=cell_index`,{
       method:'POST',
       headers:{
         'apikey':SUPA_KEY,
@@ -2010,11 +2008,11 @@ function buildChecklist(){
 
 function toggleCk(gi,ii,val){
   CK_GROUPS[gi].items[ii].done=val;
-  buildChecklist();
+  buildChecklist();hubSave("ck_groups",CK_GROUPS);
 }
 function deleteCk(gi,ii){
   CK_GROUPS[gi].items.splice(ii,1);
-  buildChecklist();
+  buildChecklist();hubSave("ck_groups",CK_GROUPS);
 }
 function addCheckItem(){
   const text=document.getElementById('ck-new-text').value.trim();if(!text)return;
@@ -2022,7 +2020,7 @@ function addCheckItem(){
   const g=CK_GROUPS.find(g=>g.label===catLabel);
   if(g) g.items.push({text,done:false});
   document.getElementById('ck-new-text').value='';
-  buildChecklist();
+  buildChecklist();hubSave("ck_groups",CK_GROUPS);
 }
 
 // ── PIN / LOCK SYSTEM ──
@@ -2161,6 +2159,124 @@ document.addEventListener('keydown',function(e){
   else if(e.key==='Escape') pinCancel();
 });
 
+// ── HUB DATA PERSISTENCE (Supabase hub_data table) ──
+const HUB_URL=SUPA_URL;
+const HUB_KEY=SUPA_KEY;
+const HUB_TABLE='hub_data';
+
+async function hubSave(key, data){
+  try{
+    const payload={key, data:JSON.stringify(data), updated_at:new Date().toISOString()};
+    await fetch(`${HUB_URL}/rest/v1/${HUB_TABLE}?on_conflict=key`,{
+      method:'POST',
+      headers:{'apikey':HUB_KEY,'Authorization':'Bearer '+HUB_KEY,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify(payload)
+    });
+  }catch(e){console.warn('Hub save failed:',key,e);}
+}
+
+async function hubLoad(key){
+  try{
+    const res=await fetch(`${HUB_URL}/rest/v1/${HUB_TABLE}?select=data&key=eq.${encodeURIComponent(key)}&limit=1`,{
+      headers:{'apikey':HUB_KEY,'Authorization':'Bearer '+HUB_KEY}
+    });
+    const rows=await res.json();
+    if(Array.isArray(rows)&&rows.length>0) return JSON.parse(rows[0].data);
+  }catch(e){}
+  return null;
+}
+
+async function saveAllHubData(){
+  await Promise.all([
+    hubSave('approvals', APPR),
+    hubSave('events', EVENTS),
+    hubSave('od_ideas', OD_IDEAS),
+    hubSave('notes', NOTES),
+    hubSave('film_sessions', filmSessions),
+    hubSave('links', savedLinks),
+    hubSave('ck_groups', CK_GROUPS),
+    hubSave('manual_tasks', manualTasks),
+    hubSave('channels', CHANNELS),
+  ]);
+}
+
+async function loadAllHubData(){
+  try{
+    // Load everything in parallel
+    const [appr,events,odIdeas,notes,film,links,ck,tasks,channels]=await Promise.all([
+      hubLoad('approvals'),
+      hubLoad('events'),
+      hubLoad('od_ideas'),
+      hubLoad('notes'),
+      hubLoad('film_sessions'),
+      hubLoad('links'),
+      hubLoad('ck_groups'),
+      hubLoad('manual_tasks'),
+      hubLoad('channels'),
+    ]);
+
+    if(appr&&Array.isArray(appr)){
+      APPR.length=0;appr.forEach(a=>APPR.push(a));
+      buildApprQueue();
+      const cnt=APPR.filter(a=>a.status==='waiting').length;
+      ['hsp-appr','st-appr2'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=cnt;});
+    }
+    if(events&&Array.isArray(events)){
+      EVENTS.length=0;events.forEach(e=>EVENTS.push(e));
+      buildEvents();
+    }
+    if(odIdeas&&Array.isArray(odIdeas)){
+      OD_IDEAS.length=0;odIdeas.forEach(o=>OD_IDEAS.push(o));
+      buildOdIdeas();buildOdPipeline();
+    }
+    if(notes&&Array.isArray(notes)){
+      NOTES.length=0;notes.forEach(n=>NOTES.push(n));
+      document.getElementById('hsp-notes').textContent=NOTES.length;
+      buildNotes();
+    }
+    if(film&&Array.isArray(film)){
+      filmSessions.length=0;film.forEach(f=>filmSessions.push(f));
+      buildFilmDays();
+    }
+    if(links&&Array.isArray(links)){
+      savedLinks.length=0;links.forEach(l=>savedLinks.push(l));
+      buildLinks();
+    }
+    if(ck&&Array.isArray(ck)){
+      CK_GROUPS.length=0;ck.forEach(g=>CK_GROUPS.push(g));
+      buildChecklist();
+    }
+    if(tasks&&typeof tasks==='object'){
+      Object.keys(tasks).forEach(k=>{manualTasks[k]=tasks[k];});
+      buildWeek();
+    }
+    if(channels&&Array.isArray(channels)){
+      CHANNELS.length=0;channels.forEach(c=>CHANNELS.push(c));
+      buildChannelDashboard();
+    }
+
+    buildOv();
+    showHubSyncBadge('All data loaded ✓');
+  }catch(e){console.warn('Hub load failed:',e);}
+}
+
+function showHubSyncBadge(msg){
+  // Show a brief toast at bottom of screen
+  let toast=document.getElementById('hub-sync-toast');
+  if(!toast){
+    toast=document.createElement('div');
+    toast.id='hub-sync-toast';
+    toast.style.cssText='position:fixed;bottom:2.5rem;left:50%;transform:translateX(-50%);background:var(--g6);color:var(--g1);font-family:"Jost",sans-serif;font-size:11px;padding:6px 16px;border-radius:99px;z-index:500;opacity:0;transition:opacity 0.3s;pointer-events:none;box-shadow:0 4px 12px rgba(43,67,54,0.3);';
+    document.body.appendChild(toast);
+  }
+  toast.textContent='☁ '+msg;
+  toast.style.opacity='1';
+  setTimeout(()=>toast.style.opacity='0',2500);
+}
+
+// Auto-save whenever data changes — patch key mutation functions
+function _autoSave(key,data){hubSave(key,data);}
+
 // ── INIT ──
 window._autoDone={};
 buildTeamBars();
@@ -2184,10 +2300,13 @@ buildOv();
 // Start locked
 setLocked(true);
 
-// Load IG grid from Supabase and subscribe to realtime updates
+// Load IG grid + team from Supabase
 igLoadFromSupabase();
 igSubscribeRealtime();
 loadTeamFromSupabase();
+
+// Load all hub data from Supabase
+loadAllHubData();
 
 // Clicking any locked field prompts PIN
 document.querySelector('.main').addEventListener('click',function(e){
