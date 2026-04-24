@@ -322,6 +322,8 @@ const IG_STAGES=['Idea','Scripted','Filmed','Edited','Approved','Scheduled'];
 const typeBg={image:'#D9E4D7',reel:'#8EA48B',promo:'#2B4336',teacher:'#728A6E',filler:'#BECFBB'};
 const typeTx={image:'#2B4336',reel:'#fff',promo:'#D9E4D7',teacher:'#fff',filler:'#324D3E'};
 const typeLabel={image:'📷 Image',reel:'🎬 Reel',promo:'📣 Promo',teacher:'🧘 Teacher',filler:'✨ Filler'};
+
+function buildTeamRow(){
   document.getElementById('team-row').innerHTML=TEAM.map(m=>`
     <div class="team-chip">${shp(m.shape,m.color,16)}<span>${m.name}</span><span style="font-size:10px;color:var(--muted);">${m.role}</span></div>`).join('');
 }
@@ -419,11 +421,6 @@ setInterval(async()=>{
 
 const igCells=igCellDefaults.map(c=>({...c}));
 let selCell=null;
-
-const IG_STAGES=['Idea','Scripted','Filmed','Edited','Approved','Scheduled'];
-const typeBg={image:'#D9E4D7',reel:'#8EA48B',promo:'#2B4336',teacher:'#728A6E',filler:'#BECFBB'};
-const typeTx={image:'#2B4336',reel:'#fff',promo:'#D9E4D7',teacher:'#fff',filler:'#324D3E'};
-const typeLabel={image:'📷 Image',reel:'🎬 Reel',promo:'📣 Promo',teacher:'🧘 Teacher',filler:'✨ Filler'};
 
 function buildGrid(){
   const g=document.getElementById('ig-grid');g.innerHTML='';
