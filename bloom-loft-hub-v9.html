@@ -195,6 +195,7 @@ textarea{min-height:65px;resize:vertical;}
 .cal-day:hover{background:var(--g0);}
 .cal-day.emp{background:var(--cream-dark);cursor:default;opacity:0.4;}
 .cal-day.twk{background:#EBF2EA;}
+.cal-day.cal-day-open{background:var(--g1) !important;border-left:2px solid var(--g5) !important;}
 .cal-day.today-cell{background:var(--g5)!important;border-left:2px solid var(--g6)!important;}
 .cal-day.today-cell .cal-dn{color:var(--g1);font-weight:700;}
 .cal-day.today-cell .cal-ev{opacity:0.92;}
@@ -1006,6 +1007,7 @@ function cycleChannelColor(ci){
 }
 
 // ── CALENDAR ──
+// ── CALENDAR (editable) ──
 const CAL={
   april:{name:'April 2026',startDow:3,days:30,twStart:21,twEnd:27,events:{
     1:[{t:"April Fool's — playful content",c:'ev-h'}],
@@ -1032,13 +1034,16 @@ const CAL={
     26:[{t:'Memorial Day',c:'ev-h'},{t:'Content pre-load',c:'ev-e',o:[0,1,2,3]}],
   }}
 };
+
+// Track which day panel is open
+let _calOpen={mo:null,day:null};
+
 function buildCal(key){
   const d=CAL[key];const wrap=document.getElementById('cal-'+key);if(!wrap)return;
   const now=new Date();
-  const todayMonth=now.getMonth(); // 0-indexed
+  const todayMonth=now.getMonth();
   const todayDay=now.getDate();
   const todayYear=now.getFullYear();
-  // april=month 3, may=month 4 (2026)
   const calMonth=key==='april'?3:4;
   const calYear=2026;
   let h=`<div class="cal-wrap"><div class="cal-hdr">${d.name}</div><div class="cal-g">`;
@@ -1047,47 +1052,143 @@ function buildCal(key){
   for(let day=1;day<=d.days;day++){
     const tw=key==='april'&&day>=d.twStart&&day<=d.twEnd;
     const isToday=todayYear===calYear&&todayMonth===calMonth&&todayDay===day;
+    const isOpen=_calOpen.mo===key&&_calOpen.day===day;
     const evts=d.events[day]||[];
-    let cls='cal-day';
+    let cls='cal-day'+(isOpen?' cal-day-open':'');
     if(isToday) cls+=' today-cell';
     else if(tw) cls+=' twk';
     let st=(!isToday&&tw)?'border-left:2px solid var(--g4);':'';
+    if(isOpen) st+='background:var(--g0) !important;';
     h+=`<div class="${cls}" style="${st}" onclick="selDay('${key}',${day})">`;
     h+=`<div class="cal-dn">${day}${isToday?'<span style="font-size:7px;background:var(--g1);color:var(--g6);border-radius:99px;padding:0 4px;margin-left:3px;vertical-align:middle;">today</span>':''}</div>`;
     evts.slice(0,2).forEach(e=>{
       const os=(e.o||[]).slice(0,2).map(i=>shp(TEAM[i].shape,TEAM[i].color,9)).join('');
       h+=`<div class="cal-ev ${e.c}"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.t}</span>${os}</div>`;
     });
-    if(evts.length>2) h+=`<div style="font-size:8px;color:var(--muted);">+${evts.length-2}</div>`;
+    if(evts.length>2) h+=`<div style="font-size:8px;color:var(--muted);">+${evts.length-2} more</div>`;
     h+=`</div>`;
   }
   h+=`</div></div>`;
   wrap.innerHTML=h;
 }
+
 function selDay(mo,day){
-  const d=CAL[mo];const evts=d.events[day]||[];
+  // Toggle: clicking the same day closes the panel
+  if(_calOpen.mo===mo&&_calOpen.day===day){
+    _calOpen={mo:null,day:null};
+    document.getElementById('day-card').style.display='none';
+    buildCal(mo);
+    return;
+  }
+  _calOpen={mo,day};
+  buildCal(mo);
+
+  const d=CAL[mo];
+  const evts=d.events[day]||[];
   const card=document.getElementById('day-card');
-  if(!evts.length){card.style.display='none';return;}
   card.style.display='block';
-  document.getElementById('day-lbl').textContent=d.name+' — '+day;
-  document.getElementById('day-body').innerHTML=evts.map(e=>{
-    // Work out if this event maps to an approval, event, or on-demand item
-    const shapes=(e.o||[]).map(i=>`<span title="${TEAM[i].name}">${shp(TEAM[i].shape,TEAM[i].color,14)}</span>`).join('');
-    // Build deep-link button if relevant
-    let deepLink='';
-    if(e.c==='ev-u'||e.c==='ev-e'){
-      // Try to match to an EVENTS entry
-      const evIdx=EVENTS.findIndex(ev=>e.t.toLowerCase().split(' ').some(w=>w.length>3&&ev.name.toLowerCase().includes(w)));
-      if(evIdx>=0) deepLink=`<button class="btn-s" style="font-size:10px;padding:3px 9px;margin-left:4px;" onclick="navigateTo('events','ev-outer-${evIdx}')">Open event →</button>`;
-    }
-    if(e.t.toLowerCase().includes('approval')||e.t.toLowerCase().includes('blog')||e.t.toLowerCase().includes('story set')||e.t.toLowerCase().includes('fb event post')){
-      const aIdx=APPR.findIndex(a=>a.status==='waiting'&&e.t.toLowerCase().split(' ').some(w=>w.length>3&&a.title.toLowerCase().includes(w)));
-      if(aIdx>=0) deepLink=`<button class="btn-s" style="font-size:10px;padding:3px 9px;margin-left:4px;" onclick="navigateTo('approval','ai-${aIdx}')">Open approval →</button>`;
-    }
-    return `<div class="row" style="flex-wrap:wrap;gap:6px;"><span style="flex:1;min-width:120px;">${e.t}</span><div style="display:flex;gap:3px;">${shapes}</div>${deepLink}</div>`;
-  }).join('');
+
+  const calMonth=mo==='april'?'Apr':'May';
+  document.getElementById('day-lbl').textContent=`${calMonth} ${day} — click an event to edit, or add new`;
+
+  renderDayPanel(mo,day);
   card.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+
+function renderDayPanel(mo,day){
+  const d=CAL[mo];
+  const evts=d.events[day]||[];
+  const body=document.getElementById('day-body');
+
+  const typeOpts=['ev-c','ev-e','ev-u','ev-h'].map(v=>`<option value="${v}">${{
+    'ev-c':'Content','ev-e':'Event/Launch','ev-u':'Urgent','ev-h':'Holiday'
+  }[v]}</option>`).join('');
+
+  const existingHtml=evts.map((e,ei)=>{
+    const shapes=(e.o||[]).map(i=>`<span title="${TEAM[i].name}">${shp(TEAM[i].shape,TEAM[i].color,13)}</span>`).join('');
+    // Deep links
+    let deepLink='';
+    if(e.c==='ev-u'||e.c==='ev-e'){
+      const evIdx=EVENTS.findIndex(ev=>e.t.toLowerCase().split(' ').some(w=>w.length>3&&ev.name.toLowerCase().includes(w)));
+      if(evIdx>=0) deepLink=`<button class="btn-s" style="font-size:10px;padding:2px 8px;" onclick="navigateTo('events','ev-outer-${evIdx}',true)">Open →</button>`;
+    }
+    return `
+      <div style="background:var(--g0);border-radius:8px;padding:7px 10px;margin-bottom:5px;border:1px solid var(--border-light);">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+          <input type="text" value="${e.t}" onblur="editCalEvent('${mo}',${day},${ei},this.value)" style="flex:1;font-size:11px;padding:4px 7px;background:var(--white);">
+          <select onchange="editCalEventType('${mo}',${day},${ei},this.value)" style="font-size:10px;padding:3px 5px;flex-shrink:0;width:100px;">${typeOpts.replace(`value="${e.c}"`,`value="${e.c}" selected`)}</select>
+          <div style="display:flex;gap:2px;">${shapes}</div>
+          ${deepLink}
+          <button onclick="deleteCalEvent('${mo}',${day},${ei})" style="width:20px;height:20px;border-radius:50%;border:1px solid #C5A0A0;background:transparent;color:#8B3A3A;font-size:10px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;" title="Delete">&#10005;</button>
+        </div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">
+          <span style="font-size:10px;color:var(--muted);">Assign:</span>
+          ${TEAM.map((m,ti)=>`<button onclick="toggleCalOwner('${mo}',${day},${ei},${ti})" style="display:flex;align-items:center;gap:3px;padding:2px 7px;border-radius:99px;border:1px solid ${(e.o||[]).includes(ti)?'var(--g4)':'var(--border-light)'};background:${(e.o||[]).includes(ti)?'var(--g1)':'transparent'};cursor:pointer;font-size:10px;font-family:'Jost',sans-serif;">${shp(m.shape,m.color,11)} ${m.name}</button>`).join('')}
+        </div>
+      </div>`;
+  }).join('');
+
+  body.innerHTML=`
+    ${existingHtml}
+    <div style="border-top:1px solid var(--border-light);padding-top:10px;margin-top:5px;">
+      <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:6px;">Add event to this day</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <input type="text" id="cal-new-text-${mo}-${day}" placeholder="Event name..." style="flex:1;min-width:150px;font-size:11px;padding:5px 8px;">
+        <select id="cal-new-type-${mo}-${day}" style="font-size:11px;padding:5px 7px;flex-shrink:0;">${typeOpts}</select>
+        <button class="btn-p" style="font-size:11px;padding:5px 12px;" onclick="addCalEvent('${mo}',${day})">Add</button>
+      </div>
+    </div>`;
+}
+
+function editCalEvent(mo,day,ei,newText){
+  if(!CAL[mo].events[day]) return;
+  CAL[mo].events[day][ei].t=newText.trim();
+  buildCal(mo);
+  hubSave('cal_events',{april:CAL.april.events,may:CAL.may.events});
+}
+
+function editCalEventType(mo,day,ei,newType){
+  if(!CAL[mo].events[day]) return;
+  CAL[mo].events[day][ei].c=newType;
+  renderDayPanel(mo,day);
+  buildCal(mo);
+  hubSave('cal_events',{april:CAL.april.events,may:CAL.may.events});
+}
+
+function toggleCalOwner(mo,day,ei,ti){
+  if(!CAL[mo].events[day]) return;
+  const ev=CAL[mo].events[day][ei];
+  if(!ev.o) ev.o=[];
+  const idx=ev.o.indexOf(ti);
+  if(idx>=0) ev.o.splice(idx,1); else ev.o.push(ti);
+  renderDayPanel(mo,day);
+  buildCal(mo);
+  hubSave('cal_events',{april:CAL.april.events,may:CAL.may.events});
+}
+
+function deleteCalEvent(mo,day,ei){
+  if(!CAL[mo].events[day]) return;
+  CAL[mo].events[day].splice(ei,1);
+  if(CAL[mo].events[day].length===0) delete CAL[mo].events[day];
+  renderDayPanel(mo,day);
+  buildCal(mo);
+  hubSave('cal_events',{april:CAL.april.events,may:CAL.may.events});
+}
+
+function addCalEvent(mo,day){
+  const textEl=document.getElementById(`cal-new-text-${mo}-${day}`);
+  const typeEl=document.getElementById(`cal-new-type-${mo}-${day}`);
+  const text=(textEl&&textEl.value.trim())||'';
+  if(!text) return;
+  const type=typeEl?typeEl.value:'ev-c';
+  if(!CAL[mo].events[day]) CAL[mo].events[day]=[];
+  CAL[mo].events[day].push({t:text,c:type,o:[]});
+  renderDayPanel(mo,day);
+  buildCal(mo);
+  hubSave('cal_events',{april:CAL.april.events,may:CAL.may.events});
+}
+
+
 
 // ── WEEKS ──
 // ── WEEK SYSTEM ──
@@ -2203,7 +2304,7 @@ async function saveAllHubData(){
 async function loadAllHubData(){
   try{
     // Load everything in parallel
-    const [appr,events,odIdeas,notes,film,links,ck,tasks,channels]=await Promise.all([
+    const [appr,events,odIdeas,notes,film,links,ck,tasks,channels,calEvts]=await Promise.all([
       hubLoad('approvals'),
       hubLoad('events'),
       hubLoad('od_ideas'),
@@ -2213,6 +2314,7 @@ async function loadAllHubData(){
       hubLoad('ck_groups'),
       hubLoad('manual_tasks'),
       hubLoad('channels'),
+      hubLoad('cal_events'),
     ]);
 
     if(appr&&Array.isArray(appr)){
@@ -2253,6 +2355,13 @@ async function loadAllHubData(){
     if(channels&&Array.isArray(channels)){
       CHANNELS.length=0;channels.forEach(c=>CHANNELS.push(c));
       buildChannelDashboard();
+    }
+
+    if(calEvts&&calEvts.april){
+      CAL.april.events=calEvts.april;
+      if(calEvts.may) CAL.may.events=calEvts.may;
+      buildCal('april');
+      buildCal('may');
     }
 
     buildOv();
